@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>使用 Face++ API 进行摄像头人脸识别</title>
+    <style>
+        /* 整体页面样式 */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        /* 容器样式 */
+       .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: 400px;
+            text-align: center;
+        }
+
+        /* 标题样式 */
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        /* 视频元素样式 */
+        #video {
+            margin-bottom: 15px;
+        }
+
+        /* 拍照按钮样式 */
+        #captureButton {
+            padding: 10px 20px;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        /* 拍照按钮悬停样式 */
+        #captureButton:hover {
+            background-color: #0056b3;
+        }
+
+        /* 结果显示区域样式 */
+       .result-section {
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 页面容器 -->
+    <div class="container">
+        <h1>摄像头人脸识别系统</h1>
+        <!-- 显示摄像头画面的视频元素 -->
+        <video id="video" width="400" height="300" autoplay></video>
+        <!-- 拍照按钮 -->
+        <button id="captureButton">拍照</button>
+        <!-- 显示识别结果的区域 -->
+        <div id="result" class="result-section"></div>
+    </div>
+    <!-- 引入 axios 库用于发送 HTTP 请求 -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/axios/0.21.1/axios.min.js"></script>
+    <script>
+        // 获取页面元素
+        const video = document.getElementById('video');
+        const captureButton = document.getElementById('captureButton');
+        const resultDiv = document.getElementById('result');
+
+        // 配置 Face++ API 信息
+        const API_KEY = 'XWjc7f7J_FEd3qnIN2SVxULKBLbFDAq7';
+        const API_SECRET = 'CQYVAal1t6fRnYYK-PsWpKFMVCx9s7BN';
+        const DETECT_URL = 'https://api-cn.faceplusplus.com/facepp/v3/detect';
+        const SEARCH_URL = 'https://api-cn.faceplusplus.com/facepp/v3/search';
+
+        // 访问摄像头
+        navigator.mediaDevices.getUserMedia({ video: true })
+          .then((stream) => {
+                video.srcObject = stream;
+            })
+          .catch((error) => {
+                console.error('无法访问摄像头:', error);
+                resultDiv.textContent = '无法访问摄像头，请检查权限或设备。';
+            });
+
+        // 拍照按钮点击事件
+        captureButton.addEventListener('click', async () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const context = canvas.getContext('2d');
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // 将 canvas 内容转换为 Blob 对象
+            canvas.toBlob(async (blob) => {
+                try {
+                    // 第一步：检测图片中的人脸
+                    const formData = new FormData();
+                    formData.append('api_key', API_KEY);
+                    formData.append('api_secret', API_SECRET);
+                    formData.append('image_file', blob, 'captured_image.jpg');
+
+                    const detectResponse = await axios.post(DETECT_URL, formData, {
+                        headers: {
+                            'Content-Type': 'multipart/form-data'
+                        }
+                    });
+
+                    const faces = detectResponse.data.faces;
+                    if (faces.length === 0) {
+                        resultDiv.textContent = '未检测到人脸';
+                        return;
+                    }
+
+                    // 假设我们已经创建了一个人脸库，这里使用第一个检测到的人脸进行搜索
+                    const faceToken = faces[0].face_token;
+
+                    // 第二步：在人脸库中搜索匹配的人脸
+                    const searchFormData = new FormData();
+                    searchFormData.append('api_key', API_KEY);
+                    searchFormData.append('api_secret', API_SECRET);
+                    searchFormData.append('face_token', faceToken);
+                    // 请将 'your_faceset_token' 替换为你实际的人脸库 faceset_token
+                    searchFormData.append('faceset_token', 'your_faceset_token'); 
+
+                    const searchResponse = await axios.post(SEARCH_URL, searchFormData, {
+                        headers: {
+                            'Content-Type': 'multipart/form-data'
+                        }
+                    });
+
+                    const results = searchResponse.data.results;
+                    if (results.length > 0) {
+                        const bestMatch = results[0];
+                        const confidence = bestMatch.confidence;
+                        const personName = bestMatch.user_id;
+                        resultDiv.textContent = `识别结果：姓名 - ${personName}，置信度 - ${confidence.toFixed(2)}%`;
+                    } else {
+                        resultDiv.textContent = '未找到匹配的人脸';
+                    }
+                } catch (error) {
+                    console.error('请求出错:', error);
+                    resultDiv.textContent = '识别过程中出现错误，请稍后再试';
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
